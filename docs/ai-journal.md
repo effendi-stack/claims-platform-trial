@@ -5,6 +5,32 @@ Unpolished by design. Newest entries at the bottom.
 
 > Draft entries were written by the AI from the session transcript. I review and rewrite them in my own words; anything marked **[review]** has not been signed off yet.
 
+## Summary: how the AI was directed **[review]**
+
+**My decisions**
+- Read and restate the brief, with **no code until the design was agreed**.
+- Spring Boot over .NET.
+- Accepted the reserve rule. Kept the authority-limit referral as a stretch goal.
+- Backend first. The frontend thin and last.
+
+**Challenged → AI changed course**
+- When I asked which service split fit the brief, the AI reversed its own monolith recommendation and moved to two services.
+
+**AI mistakes caught before they shipped**
+- An authority-limit null treated as zero.
+- A leftover dummy method.
+- Test consumers silently pointing at the wrong Kafka broker.
+- Free text title-cased in the UI.
+
+**Problems surfaced by verification, not by reading code**
+- Two OpenAPI contract bugs found by generating the client.
+- A UI bug found by testing in the browser.
+
+**Rules I kept the AI to**
+- New Flyway migrations instead of edited ones.
+- Every deviation from the design recorded in the decisions log.
+- Every claim of "works" backed by a test run, curl or a browser check.
+
 ---
 
 ## 2026-11-20 — Understanding the brief

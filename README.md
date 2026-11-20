@@ -6,19 +6,39 @@ A claims platform for claimants and claims staff across six APAC markets.
 - **insights-service** (`:8082`): the read side. It builds workload and liability-exposure projections from `claims.events`.
 - **frontend** (Angular 20): one app with claimant, handler and manager areas, a client generated from both services' OpenAPI specs, and live updates over SSE.
 
-Design and rationale: [docs/architecture.md](docs/architecture.md) · AI process log: [docs/ai-journal.md](docs/ai-journal.md)
+## Documentation
+
+| Doc | What it covers |
+|---|---|
+| [docs/architecture.md](docs/architecture.md) | Service boundaries, REST vs Kafka, data model, exposure model, decisions log, known limitations |
+| [docs/walkthrough.md](docs/walkthrough.md) | Demo script, likely questions with answers, where things live in the code |
+| [docs/ai-journal.md](docs/ai-journal.md) | What I asked the AI, what I accepted, challenged and overrode |
+
+## What's built
+
+| Built | Not built (deliberately) |
+|---|---|
+| Claim lifecycle: submit, pick up or assign, request info, respond, reserve, approve (authority limit), reject, settle, withdraw | Document uploads |
+| Role-based visibility and actions, enforced server-side (`allowedActions`) | `PENDING_APPROVAL` referral to a manager |
+| Transactional outbox → Kafka → notifications, SSE live updates, insights projection | Real IdP (a dev login stands in) |
+| Workload, throughput and liability exposure by market × line × currency | Live FX rates (static table), caching |
+| Angular UI for claimant, handler and manager | Frontend unit tests |
+| Integration tests on real Postgres and Kafka (Testcontainers): 24 in claims-service, 5 in insights-service | |
 
 ## Prerequisites
 - Docker Desktop (running)
-- JDK 17+ (only needed to run the services outside Docker)
+- Node 20.19+ or 22.12+ for the frontend
+- JDK 17+, only needed to run the services or tests outside Docker
 
 ## Run
 
-Everything in Docker:
+Backend and infrastructure in Docker. The first build downloads Maven dependencies, so allow a few minutes.
 
 ```bash
 docker compose --profile app up --build
 ```
+
+Then start the frontend (see [Frontend](#frontend)).
 
 Infrastructure only, then run the services locally:
 

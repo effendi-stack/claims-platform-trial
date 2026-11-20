@@ -1,6 +1,8 @@
-# Claims Platform — Architecture & Data Model (draft v1)
+# Claims Platform — Architecture & Data Model
 
-Status: **proposal for review** — nothing built yet. Each decision lists the alternative and why it lost, so it can be defended or overridden.
+Status: **as built**. This started as the design proposal and was updated as the work went. Every deviation from the original plan is recorded in the [decisions log](#13-decisions-log). Each decision lists the alternative and why it lost.
+
+See also: [walkthrough.md](walkthrough.md) (demo script and likely questions) · [ai-journal.md](ai-journal.md).
 
 ---
 
@@ -92,7 +94,7 @@ Rule of thumb: **commands and queries go over REST; facts go over Kafka.** The b
 
 **Event payload: event-carried state transfer.** Every event carries a full snapshot of the claim's reportable fields: status, market, line, currency, team, handler, reserve, paid amount, the SLA and the claim `version`. A small type-specific `data` block holds facts like the question asked. Consumers upsert the snapshot and ignore any event whose `version` is not newer than the one they have already applied. That makes consumers simple, idempotent and tolerant of replays, at the cost of somewhat larger messages.
 
-**Topic design:** a single `claims.events` topic, keyed by `claimId`. Kafka only guarantees order within a partition, and keying by claim puts all of a claim's events in one partition, so they stay in order. Event envelope: `eventId, eventType, claimId, occurredAt, version, actor, payload`. Consumers are idempotent: they record processed `eventId`s.
+**Topic design:** a single `claims.events` topic, keyed by `claimId`. Kafka only guarantees order within a partition, and keying by claim puts all of a claim's events in one partition, so they stay in order. Event envelope: `{ eventId, eventType, occurredAt, actorId, claim: {snapshot incl. version}, data: {...} }`. Consumers are idempotent: they record processed `eventId`s.
 
 **Dual-write problem → transactional outbox.** The claim change and its event row are written in the same DB transaction, and a relay publishes outbox rows to Kafka. Without this, a crash between the DB commit and the Kafka send would lose events or publish events for changes that never happened. Delivery is at-least-once, which is why consumers must be idempotent.
 
@@ -228,24 +230,26 @@ Events therefore have to carry everything insights needs (market, line, currency
 **Claims handler**
 - *My queue*: assigned claims sorted by SLA due date, with status, age, current reserve and an awaiting-info flag.
 - *Team inbox*: unassigned claims, with one-click "pick up" (optimistic lock).
-- Claim detail: timeline, documents, info requests, reserve history, actions valid for the current state (the server returns `allowedActions`).
+- Claim detail: timeline, info requests, reserve history, actions valid for the current state (the server returns `allowedActions`). *Documents: not built.*
 
 **Manager**
 - Open claims per handler, ageing buckets (0–7, 8–30, 30+ days), SLA breaches.
-- Throughput: decided this week, average time to decision.
+- Throughput: decided in the last 30 days, average time to decision, per handler.
 - **Outstanding exposure by market × line**, per currency, plus a USD total, with the largest open reserves listed.
 
 **Claimant**
 - Report an incident against one of their policies, with an incident-type-specific form.
 - Their claims, each with a status timeline.
-- Open information requests to answer, with uploads.
+- Open information requests to answer (text answers; uploads not built).
 - The decision and settlement amount, plus notifications.
 
 ---
 
 ## 9. API contract
 
-- **The backend owns the contract.** It is code-first: the OpenAPI spec is generated from annotations (springdoc / Swashbuckle) and **committed to the repo**. The Angular client is **generated** from that spec (`openapi-generator`), so drift breaks the frontend build instead of failing at runtime.
+- **The backend owns the contract.** It is code-first: springdoc generates the OpenAPI spec from the controllers, and the spec is **committed to the repo** (`frontend/openapi/`). The Angular client is **generated** from it (`ng-openapi-gen`), so a contract change shows up as a TypeScript compile error, not a runtime failure.
+- Generating the client exposed two contract bugs, which were fixed in the backend: responses declared as `*/*` (read as a Blob by the client) and `Pageable` documented as one object instead of `page`, `size` and `sort`.
+- Known gap: springdoc marks every record field optional, so the generated types are all `?`. `@Schema(requiredMode = REQUIRED)` on response records would tighten this.
 - The alternative, contract-first (writing the YAML by hand), is cleaner for teams in separate organisations but slower in a sprint where one person owns both tiers.
 - Resource-oriented endpoints, with state transitions as explicit action sub-resources rather than generic `PATCH status`:
 
@@ -269,7 +273,7 @@ GET    /api/events/stream                       (SSE)
 # insights-service (read-only)
 GET    /api/insights/workload?teamId=           per-handler open counts, ageing, SLA breaches
 GET    /api/insights/throughput?from&to         decided count, avg time to decision
-GET    /api/insights/exposure?groupBy=market,line
+GET    /api/insights/exposure                   by market x line x currency (manager only)
 ```
 
 Each service publishes its own OpenAPI spec, and the Angular client is generated from both.
@@ -280,10 +284,10 @@ Each service publishes its own OpenAPI spec, and the Angular client is generated
 
 ## 10. Security (kept proportionate)
 
-- Seeded users and a dev login endpoint that issues a JWT containing role, team and markets. No external IdP, which is a stated simplification.
+- Seeded users and a dev login endpoint (`/api/auth/dev-login`, switched off by a config property) issue an HS256 JWT with `sub`, `role` and `teamId`. No external IdP, which is a stated simplification. Swapping in one means replacing the decoder with the IdP's JWKS; the authorisation code doesn't change.
 - Authorisation is enforced on the server:
   - Claimants see only their own claims.
-  - Handlers see only their team's market(s).
+  - Handlers see only their team's claims, and only their own team's insights.
   - Only managers see exposure across all markets.
 - Angular route guards are for UX only, never as the security boundary.
 
@@ -299,8 +303,8 @@ Each service publishes its own OpenAPI spec, and the Angular client is generated
 | Messaging | Kafka (single-node KRaft, in docker-compose) | Required. KRaft means no ZooKeeper. |
 | Cache | **None** | No measured need. Read models already absorb dashboard load. Easy to justify leaving it out. |
 | Tests | JUnit 5 + AssertJ + Testcontainers (Postgres, Kafka) | Integration tests run against real infrastructure, not mocks. The state machine has pure unit tests. |
-| Frontend | Angular 18+, standalone components, signals, lazy-loaded `claimant` and `staff` feature areas, generated API client | One app with role-based areas, as the brief specifies. |
-| Local run | `docker compose up` (Postgres, Kafka, claims-service, insights-service), `npm start` for the frontend | "Starts locally" in a single command. |
+| Frontend | Angular 20, standalone components, signals, lazy-loaded routes per role, generated API client, plain CSS | One app with role-based areas, as the brief specifies. No UI library, to save setup time. |
+| Local run | `docker compose --profile app up --build` (Postgres, Kafka, Kafka UI, both services), then `npm start` in `frontend/` | The backend starts in one command. The frontend runs on the Angular dev server with a proxy. |
 | Repo layout | `claims-service/`, `insights-service/`, `frontend/`, `docker-compose.yml`, `docs/` | One repo, so the commit history shows the whole process. |
 
 ---
@@ -318,6 +322,8 @@ Each service publishes its own OpenAPI spec, and the Angular client is generated
 
 If time runs short, cut from the bottom: the manager UI first, then SSE (fall back to polling). The backend lifecycle and exposure are never cut.
 
+**Outcome:** everything was built in this order, and nothing had to be cut except document uploads, which were never prioritised.
+
 ---
 
 ## 13. Decisions log
@@ -331,6 +337,27 @@ If time runs short, cut from the bottom: the manager UI first, then SSE (fall ba
 8. Information-request responses are nested under the claim (`/claims/{id}/information-requests/{rid}/response`), so authorisation always starts from loading a claim the caller can see.
 9. The claimant never sees the reserve, the SLA or the reserve history. Those fields are omitted from their responses.
 10. Events carry a full claim snapshot (event-carried state transfer), so insights-service never needs to call claims-service. The snapshot includes the handler's display name for the same reason.
+11. The authority limit is enforced as a `422` refusal now; the manager approves above the limit. A `PENDING_APPROVAL` referral state is still a stretch goal.
 12. SLA breach in insights excludes paused claims (those awaiting the claimant). This is a simplification: a claim that was already overdue when it was paused isn't counted until it resumes.
 13. Exposure counts APPROVED claims as outstanding until they are paid, because the liability exists until settlement.
-11. The authority limit is enforced as a `422` refusal now; the manager approves above the limit. A `PENDING_APPROVAL` referral state is still a stretch goal.
+14. Frontend uses Angular 20 (via npx), not the globally installed CLI v14, which doesn't support Node 22.
+15. Frontend sessions are stored in `sessionStorage`, one per tab, so claimant and handler can be demoed side by side.
+
+---
+
+## 14. Known limitations and what I would do next
+
+In priority order:
+
+1. **Document uploads.** The table exists; the endpoint and storage (S3 or Blob with signed URLs) don't.
+2. **`PENDING_APPROVAL` referral.** Above the authority limit, the claim should route to the manager's queue instead of just being refused.
+3. **Tighter contract.** Mark required fields in the OpenAPI spec, and add a CI check that the committed spec matches the running service.
+4. **Real identity.** Validate tokens from the corporate IdP (JWKS), so claimants come from the customer IdP and staff from the workforce IdP.
+5. **Operations.**
+   - Outbox: housekeeping to delete published rows, plus a lag metric.
+   - Dead-letter topic: tooling to replay it.
+   - Tracing: correlate across REST → outbox → Kafka → consumer (trace ID in a message header).
+   - SSE fan-out across multiple instances.
+6. **SLA accuracy.** Store the pause timestamp in the insights projection, so a claim that was already overdue when it was paused still counts as breached.
+7. **Frontend tests.** At least the claim-detail action panel, plus a Playwright happy path.
+8. **Production data stores.** Separate databases per service (not just schemas), real FX rates, and data residency per market.
