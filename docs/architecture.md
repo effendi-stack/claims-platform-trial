@@ -96,6 +96,19 @@ Rule of thumb: **commands and queries go over REST; facts go over Kafka.** The b
 
 **Dual-write problem → transactional outbox.** The claim change and its event row are written in the same DB transaction, and a relay publishes outbox rows to Kafka. Without this, a crash between the DB commit and the Kafka send would lose events or publish events for changes that never happened. Delivery is at-least-once, which is why consumers must be idempotent.
 
+**As built:**
+- **Relay:** polls every 500 ms, selecting batches with `FOR UPDATE SKIP LOCKED` so several instances can run it safely. It sends one row at a time and waits for the broker ack before marking the row `published_at`. Each message has key = claimId and `eventType` / `eventId` headers.
+- **Consumers:**
+
+| Consumer | Group | Dedupe | On failure |
+|---|---|---|---|
+| claims-service notifications | `claims-notifications` | `processed_event` (consumer, eventId) | Spring Kafka default retries, then logs and skips. A notification is not worth blocking a partition for. |
+| insights-service projection | `insights-service` | `processed_event` (eventId), plus a version guard in the upsert | 3 retries 1s apart for transient errors. Malformed events are not retried. Both then go to `claims.events.insights.DLT`, which the consumer owns. |
+
+- **Tolerant reader:** insights-service has its own `ClaimEventMessage` record that ignores unknown fields. No Java code is shared between the services; the JSON is the contract.
+- **SSE authentication:** a browser `EventSource` cannot send headers, so `/api/events/stream` alone also accepts `?access_token=`. Every other endpoint is header-only.
+- **SSE across instances:** the emitters live in memory. With several instances, each one would need every event, either through a consumer group per instance or a shared pub/sub. Not needed for a single instance.
+
 ---
 
 ## 4. Handling async across both tiers
@@ -317,5 +330,7 @@ If time runs short, cut from the bottom: the manager UI first, then SSE (fall ba
 7. Postgres has one login role per service. Each role can only access its own schema, so the "neither reads the other's tables" rule is enforced by the database, not just by convention.
 8. Information-request responses are nested under the claim (`/claims/{id}/information-requests/{rid}/response`), so authorisation always starts from loading a claim the caller can see.
 9. The claimant never sees the reserve, the SLA or the reserve history. Those fields are omitted from their responses.
-10. Events carry a full claim snapshot (event-carried state transfer), so insights-service never needs to call claims-service.
+10. Events carry a full claim snapshot (event-carried state transfer), so insights-service never needs to call claims-service. The snapshot includes the handler's display name for the same reason.
+12. SLA breach in insights excludes paused claims (those awaiting the claimant). This is a simplification: a claim that was already overdue when it was paused isn't counted until it resumes.
+13. Exposure counts APPROVED claims as outstanding until they are paid, because the liability exists until settlement.
 11. The authority limit is enforced as a `422` refusal now; the manager approves above the limit. A `PENDING_APPROVAL` referral state is still a stretch goal.

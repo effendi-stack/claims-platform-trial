@@ -50,3 +50,19 @@ Unpolished by design. Newest entries at the bottom.
   - 23 tests pass: unit tests for the state machine, SLA pause/resume and the reserve rule, plus integration tests on real Postgres via Testcontainers.
   - The integration tests cover the full lifecycle, the double-pickup 409, visibility 404s, the claimant-cannot-approve 403, idempotent submission, validation, and ordered outbox events with increasing versions.
   - V3 migrated cleanly on the Docker database using the service's own login role.
+
+## 2026-11-20 — Kafka flow
+- **Asked:** build the outbox relay, the notification and SSE consumers, and insights-service end to end.
+- **AI design choices to check:** **[review]**
+  - **Relay:** polls with `FOR UPDATE SKIP LOCKED` and waits for the broker ack before marking a row published, giving at-least-once delivery.
+  - **Consumer idempotency:** both consumers dedupe on eventId. Insights also ignores snapshots that are not newer, by version.
+  - **Dead letters:** insights sends poison messages to its own DLT after retries, so they can't block a partition. Notifications just log and skip.
+  - **Notification timing:** notifications run from Kafka rather than inside the command transaction, so they can never roll back a decision. The SSE push fires only after commit.
+  - **SSE token:** `?access_token=` is accepted on the SSE endpoint only, because EventSource can't set headers.
+  - **Tolerant reader:** insights has its own event model rather than a shared library.
+  - **Exposure:** APPROVED counts as outstanding until it is paid. Paused claims don't count as SLA breaches (a stated simplification).
+- **AI mistake caught:** the first test consumers read `spring.kafka.bootstrap-servers` via `@Value`. With `@ServiceConnection` that property isn't set, so the tests silently pointed at the Docker Compose broker and timed out. Fixed by using the app's own `ConsumerFactory`.
+- **Verified:**
+  - Tests: claims-service 24 and insights-service 5 pass, against real Kafka and Postgres containers.
+  - The insights tests cover out-of-order and duplicate events, the exposure and workload maths, team scoping, and the DLT path.
+  - End to end on Docker: a claim submitted, picked up and approved over HTTP produced 3 SSE pushes and 3 notifications for the claimant, and showed up in the insights workload and exposure. No outbox rows were left unpublished.

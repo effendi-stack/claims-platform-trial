@@ -38,8 +38,23 @@ docker compose up -d
 |---|---|
 | claims-service API docs | http://localhost:8081/swagger-ui.html |
 | insights-service API docs | http://localhost:8082/swagger-ui.html |
-| Kafka UI | http://localhost:8090 |
+| Kafka UI | http://localhost:8090. Topics: `claims.events`, `claims.events.insights.DLT` |
 | Postgres | `localhost:5432/claims_platform`. Service roles are `claims_svc` and `insights_svc`; `admin`/`admin` is for inspection only. |
+
+## Try it with curl
+
+Log in as a seeded user. Users are listed at `GET :8081/api/auth/demo-users`: claimant `mei.tan@example.com`, SG handlers `priya.nair@example.com` and `daniel.lim@example.com`, manager `grace.ong@example.com`.
+
+```bash
+curl -s -X POST localhost:8081/api/auth/dev-login -H 'Content-Type: application/json' -d '{"email":"mei.tan@example.com"}'
+```
+
+Then call the APIs with `Authorization: Bearer <token>`, or use the Swagger UI's *Authorize* button.
+
+| Service | Main endpoints |
+|---|---|
+| claims-service | `/api/claims`, `/api/claims/{id}` with action sub-resources, `/api/notifications`, `/api/events/stream` (SSE) |
+| insights-service | `/api/insights/workload`, `/api/insights/throughput`, `/api/insights/exposure` (manager only) |
 
 ## Test
 
