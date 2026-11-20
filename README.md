@@ -6,13 +6,16 @@ A claims platform for claimants and claims staff across six APAC markets.
 - **insights-service** (`:8082`): the read side. It builds workload and liability-exposure projections from `claims.events`.
 - **frontend** (Angular 20): one app with claimant, handler and manager areas, a client generated from both services' OpenAPI specs, and live updates over SSE.
 
-## Documentation
+## Start here
 
-| Doc | What it covers |
-|---|---|
-| [docs/architecture.md](docs/architecture.md) | Service boundaries, REST vs Kafka, data model, exposure model, decisions log, known limitations |
-| [docs/walkthrough.md](docs/walkthrough.md) | Demo script, likely questions with answers, where things live in the code |
-| [docs/ai-journal.md](docs/ai-journal.md) | What I asked the AI, what I accepted, challenged and overrode |
+If you're reviewing this, here's the order I'd suggest:
+
+1. **This README.** It covers what's built, what isn't, and how to run it.
+2. **[docs/architecture.md](docs/architecture.md).** This explains how the system is designed and why. Sections 1–3 cover the big decisions: how I framed the problem, why there are two services, and what goes over REST versus Kafka. If you're short on time, read those. The rest covers the claim lifecycle, how liability exposure is modelled, the data model, the API contract, a log of every decision (including the ones that changed during the build), and what I'd do next.
+3. **[docs/walkthrough.md](docs/walkthrough.md).** This is the demo script I'll follow, my answers to the questions I expect, and a map of where the important code lives.
+4. **[docs/ai-journal.md](docs/ai-journal.md).** This is the running log of how I worked with the AI: what I asked for, what I accepted, where I pushed back, and the mistakes I caught.
+
+The commit history is meant to be read too. Each commit is one step of the build, in the order I did it.
 
 ## What's built
 
