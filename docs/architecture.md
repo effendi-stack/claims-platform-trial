@@ -196,8 +196,7 @@ Handler queues ("my queue", "team inbox") are served by claims-service directly 
 
 | Table | Purpose |
 |---|---|
-| `claim_summary` | One row per claim: status, handler, team, market, line, currency, current reserve, paid, reported/decided timestamps, SLA due. The base for all aggregates. |
-| `exposure_by_segment` | `market_code`, `product_line`, `currency` → open count, outstanding reserve, paid. Updated incrementally per event. |
+| `claim_summary` | One row per claim: status, handler, team, market, line, currency, current reserve, paid, reported/decided timestamps, SLA due, last applied event version. Workload, throughput and exposure are all `GROUP BY` queries over this table. |
 | `fx_rate` | Static rates to USD for the reporting total. |
 | `processed_event` | `event_id`, used for idempotency. |
 
@@ -303,3 +302,6 @@ If time runs short, cut from the bottom: the manager UI first, then SSE (fall ba
 2. Service split → **two services (claims + insights)**. The AI first proposed a modular monolith, then changed its recommendation after looking at the brief's "what drives that decision" question; the user agreed.
 3. Initial reserve = `min(claimed, sum insured) − deductible`, floored at 0 → **accepted**.
 4. Authority limit / `PENDING_APPROVAL` → **stretch goal**.
+5. Dropped the separate `exposure_by_segment` table (during skeleton). Exposure is a `GROUP BY` over `claim_summary`. Keeping a pre-aggregated table up to date incrementally means handling every transition's +/- delta, and that is error-prone. At this data volume an indexed aggregate is fast, and there is one source of truth. Revisit if it becomes slow.
+6. insights-service uses plain JDBC, not JPA. Its tables are upsert targets and aggregate queries, not domain entities, so an ORM adds nothing.
+7. Postgres has one login role per service. Each role can only access its own schema, so the "neither reads the other's tables" rule is enforced by the database, not just by convention.

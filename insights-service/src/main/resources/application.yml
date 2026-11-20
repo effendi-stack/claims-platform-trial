@@ -1,0 +1,37 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: insights-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/claims_platform}
+    username: ${DB_USER:insights_svc}
+    password: ${DB_PASSWORD:insights_svc}
+  flyway:
+    schemas: insights
+    default-schema: insights
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+    consumer:
+      group-id: insights-service
+      # A brand-new insights deployment replays the whole topic to build its tables.
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
+insights:
+  kafka:
+    topic: claims.events
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
