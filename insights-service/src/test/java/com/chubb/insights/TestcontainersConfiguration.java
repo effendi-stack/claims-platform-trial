@@ -1,8 +1,10 @@
 package com.chubb.insights;
 
+import org.apache.kafka.clients.admin.NewTopic;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Bean;
+import org.springframework.kafka.config.TopicBuilder;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.kafka.KafkaContainer;
 import org.testcontainers.utility.DockerImageName;
@@ -21,5 +23,11 @@ public class TestcontainersConfiguration {
     @ServiceConnection
     KafkaContainer kafkaContainer() {
         return new KafkaContainer(DockerImageName.parse("apache/kafka:3.9.1"));
+    }
+
+    /** In production claims-service owns and creates this topic; in isolation tests we create it. */
+    @Bean
+    NewTopic claimsEvents() {
+        return TopicBuilder.name("claims.events").partitions(6).replicas(1).build();
     }
 }

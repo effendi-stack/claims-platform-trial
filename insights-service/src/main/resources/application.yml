@@ -8,6 +8,8 @@ spring:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/claims_platform}
     username: ${DB_USER:insights_svc}
     password: ${DB_PASSWORD:insights_svc}
+    hikari:
+      schema: insights
   flyway:
     schemas: insights
     default-schema: insights
@@ -19,10 +21,20 @@ spring:
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    # producer is only used to publish poison messages to the dead-letter topic
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+security:
+  jwt:
+    # same signing secret as claims-service (which issues the tokens)
+    secret: ${JWT_SECRET:dev-only-signing-secret-change-me-0123456789abcdef}
 
 insights:
   kafka:
     topic: claims.events
+    dead-letter-topic: claims.events.insights.DLT
 
 springdoc:
   api-docs:
