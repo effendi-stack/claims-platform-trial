@@ -66,3 +66,22 @@ Unpolished by design. Newest entries at the bottom.
   - Tests: claims-service 24 and insights-service 5 pass, against real Kafka and Postgres containers.
   - The insights tests cover out-of-order and duplicate events, the exposure and workload maths, team scoping, and the DLT path.
   - End to end on Docker: a claim submitted, picked up and approved over HTTP produced 3 SSE pushes and 3 notifications for the claimant, and showed up in the insights workload and exposure. No outbox rows were left unpublished.
+
+## 2026-11-20 — Angular frontend
+- **Asked:** build a thin frontend: claimant (report, track, respond), handler (queue, claim detail with actions), and the manager dashboard if time allows.
+- **Decisions:** **[review]**
+  - **Angular version:** Angular 20 via `npx @angular/cli@20`, because the global CLI was v14 and doesn't support Node 22.
+  - **Contract:** the typed client is generated from both services' committed OpenAPI specs (`ng-openapi-gen`), so the backend owns the contract.
+  - **Permissions:** screens render the API's `allowedActions` rather than re-implementing the rules. Route guards are for UX only.
+  - **Sessions:** stored in `sessionStorage`, so each browser tab is its own user. That makes the demo work as claimant and handler side by side.
+  - **Live updates:** a single EventSource per tab. A push only triggers a REST refetch.
+- **Generation exposed two backend contract bugs, fixed in the backend rather than patched around:**
+  - springdoc declared responses as `*/*`, so the generated client read every body as a `Blob`. Fixed with `springdoc.default-produces-media-type: application/json`.
+  - `Pageable` was documented as one `pageable` object instead of `page`, `size` and `sort`. Fixed with `@ParameterObject`.
+  - Also added `teamId` to the staff claim summary, so the manager's "assign to" list can load handlers.
+- **Caught in browser testing:** the claim-details panel title-cased free text (`SGX1234A` became `Sgx1234a`). Fixed so that only enum codes are reformatted.
+- **Verified in the browser:**
+  - Claimant: reported a claim through the form; the notification arrived live.
+  - Handler (in a second tab): saw it in the unassigned queue, picked it up and requested information. The claimant's tab switched to "Action needed" with the response form, with no reload.
+  - Manager: the dashboard showed exposure by market and line, the USD totals and handler workload. No console errors.
+- **Not built:** document uploads, frontend unit tests, and serving the frontend from Docker Compose.

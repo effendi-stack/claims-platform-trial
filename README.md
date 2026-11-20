@@ -4,7 +4,7 @@ A claims platform for claimants and claims staff across six APAC markets.
 
 - **claims-service** (`:8081`): the system of record. It handles the claim lifecycle, information requests, reserves, decisions and notifications, and publishes domain events via a transactional outbox.
 - **insights-service** (`:8082`): the read side. It builds workload and liability-exposure projections from `claims.events`.
-- **frontend** (Angular): one app with claimant and staff areas. *Not started yet.*
+- **frontend** (Angular 20): one app with claimant, handler and manager areas, a client generated from both services' OpenAPI specs, and live updates over SSE.
 
 Design and rationale: [docs/architecture.md](docs/architecture.md) · AI process log: [docs/ai-journal.md](docs/ai-journal.md)
 
@@ -40,6 +40,22 @@ docker compose up -d
 | insights-service API docs | http://localhost:8082/swagger-ui.html |
 | Kafka UI | http://localhost:8090. Topics: `claims.events`, `claims.events.insights.DLT` |
 | Postgres | `localhost:5432/claims_platform`. Service roles are `claims_svc` and `insights_svc`; `admin`/`admin` is for inspection only. |
+
+## Frontend
+
+Requires Node 20.19+ or 22.12+. Run both services first.
+
+```bash
+cd frontend && npm install && npm start
+```
+
+Open http://localhost:4200 and pick a demo user. The session is per browser tab, so open a second tab to act as the handler while the first is the claimant, and watch changes arrive live.
+
+The dev proxy (`frontend/proxy.conf.json`) routes `/api/insights/**` to `:8082` and the rest of `/api/**` to `:8081`. To regenerate the typed API client after a backend change, with both services running:
+
+```bash
+cd frontend && npm run api:export && npm run api:generate
+```
 
 ## Try it with curl
 
