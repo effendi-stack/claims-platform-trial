@@ -31,6 +31,7 @@ public record ClaimEvent(
             String currency,
             UUID teamId,
             UUID assignedHandlerId,
+            String assignedHandlerName,
             UUID claimantId,
             BigDecimal claimedAmount,
             BigDecimal currentReserve,

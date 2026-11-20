@@ -5,6 +5,8 @@ import com.chubb.claims.claim.domain.Decision;
 import com.chubb.claims.claim.domain.DecisionRepository;
 import com.chubb.claims.claim.domain.Payment;
 import com.chubb.claims.claim.domain.PaymentRepository;
+import com.chubb.claims.reference.AppUser;
+import com.chubb.claims.reference.AppUserRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
@@ -32,15 +34,18 @@ public class OutboxWriter {
     private final ObjectMapper json;
     private final DecisionRepository decisions;
     private final PaymentRepository payments;
+    private final AppUserRepository users;
     private final Clock clock;
 
     public OutboxWriter(JdbcTemplate jdbc, EntityManager em, ObjectMapper json,
-                        DecisionRepository decisions, PaymentRepository payments, Clock clock) {
+                        DecisionRepository decisions, PaymentRepository payments, AppUserRepository users,
+                        Clock clock) {
         this.jdbc = jdbc;
         this.em = em;
         this.json = json;
         this.decisions = decisions;
         this.payments = payments;
+        this.users = users;
         this.clock = clock;
     }
 
@@ -64,10 +69,13 @@ public class OutboxWriter {
         BigDecimal paid = payments.findByClaimIdOrderByPaidAtAsc(c.getId()).stream()
                 .map(Payment::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+        // Name travels with the event so read models can display it without calling back.
+        String handlerName = c.getAssignedHandlerId() == null ? null
+                : users.findById(c.getAssignedHandlerId()).map(AppUser::getName).orElse(null);
         return new ClaimEvent.Snapshot(
                 c.getId(), c.getClaimNumber(), c.getVersion(), c.getStatus().name(),
                 c.getMarketCode(), c.getProductLine().name(), c.getCurrency(),
-                c.getTeamId(), c.getAssignedHandlerId(), c.getClaimantId(),
+                c.getTeamId(), c.getAssignedHandlerId(), handlerName, c.getClaimantId(),
                 c.getClaimedAmount(), c.getCurrentReserve(), paid,
                 c.getReportedAt(), decidedAt, c.getSlaDueAt(), c.getSlaPausedAt() != null);
     }
