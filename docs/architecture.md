@@ -90,6 +90,8 @@ flowchart LR
 
 Rule of thumb: **commands and queries go over REST; facts go over Kafka.** The browser never talks to Kafka.
 
+**Event payload: event-carried state transfer.** Every event carries a full snapshot of the claim's reportable fields: status, market, line, currency, team, handler, reserve, paid amount, the SLA and the claim `version`. A small type-specific `data` block holds facts like the question asked. Consumers upsert the snapshot and ignore any event whose `version` is not newer than the one they have already applied. That makes consumers simple, idempotent and tolerant of replays, at the cost of somewhat larger messages.
+
 **Topic design:** a single `claims.events` topic, keyed by `claimId`. Kafka only guarantees order within a partition, and keying by claim puts all of a claim's events in one partition, so they stay in order. Event envelope: `eventId, eventType, claimId, occurredAt, version, actor, payload`. Consumers are idempotent: they record processed `eventId`s.
 
 **Dual-write problem → transactional outbox.** The claim change and its event row are written in the same DB transaction, and a relay publishes outbox rows to Kafka. Without this, a crash between the DB commit and the Kafka send would lose events or publish events for changes that never happened. Delivery is at-least-once, which is why consumers must be idempotent.
@@ -115,6 +117,7 @@ stateDiagram-v2
     SUBMITTED --> WITHDRAWN : claimant withdraws
     IN_REVIEW --> AWAITING_INFO : request info
     AWAITING_INFO --> IN_REVIEW : claimant responds
+    AWAITING_INFO --> WITHDRAWN : claimant withdraws
     IN_REVIEW --> APPROVED : approve (amount ≤ authority)
     IN_REVIEW --> REJECTED : reject (reason code)
     IN_REVIEW --> WITHDRAWN : claimant withdraws
@@ -126,7 +129,10 @@ stateDiagram-v2
 
 - Transitions live in **one state-machine class in the domain**, not in controllers, and every transition is unit-tested.
 - The SLA clock is paused while `AWAITING_INFO`, so a handler is not penalised while waiting on the claimant.
-- Stretch: an **authority limit** per handler; approvals above it go to `PENDING_APPROVAL` for a manager.
+- **Authority limit** per handler: an approval above the limit is refused with `422 AUTHORITY_LIMIT_EXCEEDED`, and a manager must approve instead. A full `PENDING_APPROVAL` referral state remains a stretch goal.
+- **Permissions:** `ClaimPermissions` is the single place that decides who can see a claim and who can do each action. The same class enforces commands and computes `allowedActions` for the UI.
+  - **Visibility:** claimants see only their own claims, handlers their team's, and the manager everything. A claim the caller cannot see returns `404`, not `403`, so its existence isn't leaked.
+  - **Actions:** only the assigned handler (or the manager) can work a claim. Only the claimant can respond to information requests or withdraw.
 
 ---
 
@@ -231,15 +237,19 @@ Events therefore have to carry everything insights needs (market, line, currency
 - Resource-oriented endpoints, with state transitions as explicit action sub-resources rather than generic `PATCH status`:
 
 ```
-POST   /api/claims                              (claimant) submit
-GET    /api/claims?mine | ?status&assignee&market&line
+POST   /api/auth/dev-login                      (dev only) token for a seeded user
+GET    /api/auth/demo-users                     (dev only)
+GET    /api/policies/mine                       (claimant) policies to claim against
+GET    /api/handlers?teamId=                    (staff) for assignment
+POST   /api/claims                              (claimant) submit; Idempotency-Key header
+GET    /api/claims?status&assignedTo=me|unassigned|{id}&market&productLine&page&size&sort
 GET    /api/claims/{id}                         detail + allowedActions
-POST   /api/claims/{id}/assign                  pick up / reassign
+POST   /api/claims/{id}/assign                  handler: pick up (no body); manager: {handlerId}
 POST   /api/claims/{id}/information-requests
-POST   /api/information-requests/{id}/response  (claimant)
-POST   /api/claims/{id}/documents
+POST   /api/claims/{id}/information-requests/{requestId}/response   (claimant)
 POST   /api/claims/{id}/reserve
 POST   /api/claims/{id}/approve | /reject | /settle | /withdraw
+POST   /api/claims/{id}/documents               (not built yet)
 GET    /api/notifications
 GET    /api/events/stream                       (SSE)
 
@@ -305,3 +315,7 @@ If time runs short, cut from the bottom: the manager UI first, then SSE (fall ba
 5. Dropped the separate `exposure_by_segment` table (during skeleton). Exposure is a `GROUP BY` over `claim_summary`. Keeping a pre-aggregated table up to date incrementally means handling every transition's +/- delta, and that is error-prone. At this data volume an indexed aggregate is fast, and there is one source of truth. Revisit if it becomes slow.
 6. insights-service uses plain JDBC, not JPA. Its tables are upsert targets and aggregate queries, not domain entities, so an ORM adds nothing.
 7. Postgres has one login role per service. Each role can only access its own schema, so the "neither reads the other's tables" rule is enforced by the database, not just by convention.
+8. Information-request responses are nested under the claim (`/claims/{id}/information-requests/{rid}/response`), so authorisation always starts from loading a claim the caller can see.
+9. The claimant never sees the reserve, the SLA or the reserve history. Those fields are omitted from their responses.
+10. Events carry a full claim snapshot (event-carried state transfer), so insights-service never needs to call claims-service.
+11. The authority limit is enforced as a `422` refusal now; the manager approves above the limit. A `PENDING_APPROVAL` referral state is still a stretch goal.

@@ -32,3 +32,21 @@ Unpolished by design. Newest entries at the bottom.
   - insights-service uses JDBC rather than JPA.
   - One Postgres login role per service, so the schema boundary is enforced by the database.
 - **Verified:** both services compile.
+
+## 2026-11-20 — Claim lifecycle (claims-service)
+- **Asked:** implement the claim lifecycle in claims-service: aggregate, state machine, REST commands and queries, outbox writes, tests.
+- **AI design choices to check:** **[review]**
+  - **Permissions:** a single `ClaimPermissions` class decides both enforcement and the UI's `allowedActions`, so the rules can't drift apart. A claim the caller cannot see returns 404 rather than 403.
+  - **Event shape:** events carry a full claim snapshot plus the claim `version` ("event-carried state transfer"), so insights never calls back to claims-service.
+  - **Hidden from claimants:** the reserve, SLA and reserve history are omitted from claimant responses.
+  - **Authority limit:** implemented as a 422 refusal; the manager approves above the limit. A `PENDING_APPROVAL` referral state is still a stretch goal.
+  - **Dev login:** a password-less endpoint issues HS256 JWTs for seeded users. It is clearly marked dev-only and switched off by a config property.
+  - **Migration discipline:** schema changes went into a new V3 migration rather than editing V1, which had already been applied.
+- **AI mistakes caught during the work:**
+  - Authority-limit check: the first version treated a missing limit as zero, which would have blocked every approval. Fixed so that a null limit means unlimited.
+  - `ClaimIntake` had a leftover dummy method; removed.
+  - An integration-test assertion failed on a list comparison. The API response was correct; the assertion style was swapped for Hamcrest `contains`.
+- **Verified:**
+  - 23 tests pass: unit tests for the state machine, SLA pause/resume and the reserve rule, plus integration tests on real Postgres via Testcontainers.
+  - The integration tests cover the full lifecycle, the double-pickup 409, visibility 404s, the claimant-cannot-approve 403, idempotent submission, validation, and ordered outbox events with increasing versions.
+  - V3 migrated cleanly on the Docker database using the service's own login role.
