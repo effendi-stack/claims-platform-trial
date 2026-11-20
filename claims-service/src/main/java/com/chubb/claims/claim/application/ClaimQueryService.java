@@ -150,6 +150,7 @@ public class ClaimQueryService {
                 c.getClaimedAmount(), c.getReportedAt(), c.getAssignedHandlerId(),
                 nameOf(people, c.getAssignedHandlerId()),
                 nameOf(people, c.getClaimantId()),
+                staff ? c.getTeamId() : null,
                 staff ? c.getCurrentReserve() : null,
                 staff ? c.getPriority() : null,
                 staff ? c.getSlaDueAt() : null,

@@ -36,6 +36,7 @@ public final class ClaimResponses {
             String assignedHandlerName,
             String claimantName,
             // staff only
+            UUID teamId,
             BigDecimal currentReserve,
             Priority priority,
             Instant slaDueAt,

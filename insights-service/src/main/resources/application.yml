@@ -37,6 +37,8 @@ insights:
     dead-letter-topic: claims.events.insights.DLT
 
 springdoc:
+  # JSON, not */*: otherwise generated clients treat every response body as a binary blob
+  default-produces-media-type: application/json
   api-docs:
     path: /v3/api-docs
   swagger-ui:

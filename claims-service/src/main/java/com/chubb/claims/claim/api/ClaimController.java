@@ -12,6 +12,7 @@ import com.chubb.claims.reference.ProductLine;
 import com.chubb.claims.security.CurrentUser;
 import com.chubb.claims.security.CurrentUserProvider;
 import io.swagger.v3.oas.annotations.Operation;
+import org.springdoc.core.annotations.ParameterObject;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Pageable;
@@ -62,7 +63,7 @@ public class ClaimController {
                                            @RequestParam(required = false) String assignedTo,
                                            @RequestParam(required = false) String market,
                                            @RequestParam(required = false) ProductLine productLine,
-                                           @PageableDefault(size = 20) Pageable pageable) {
+                                           @ParameterObject @PageableDefault(size = 20) Pageable pageable) {
         return queries.list(currentUser.get(), new ClaimFilter(status, assignedTo, market, productLine), pageable);
     }
 
