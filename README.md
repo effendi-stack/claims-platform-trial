@@ -152,3 +152,7 @@ cd frontend && npm run api:export && npm run api:generate
 ```
 
 If the frontend no longer matches, it will fail to compile rather than break quietly at runtime.
+
+---
+
+By Muhamad Effendi
