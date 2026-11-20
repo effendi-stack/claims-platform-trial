@@ -1,53 +1,105 @@
-# Claims Platform (APAC motor & property)
+# Claims Platform
 
-A claims platform for claimants and claims staff across six APAC markets.
+This is my take-home submission: a claims platform for motor and property insurance across six APAC markets.
 
-- **claims-service** (`:8081`): the system of record. It handles the claim lifecycle, information requests, reserves, decisions and notifications, and publishes domain events via a transactional outbox.
-- **insights-service** (`:8082`): the read side. It builds workload and liability-exposure projections from `claims.events`.
-- **frontend** (Angular 20): one app with claimant, handler and manager areas, a client generated from both services' OpenAPI specs, and live updates over SSE.
+Today, claimants phone or email and then hear nothing. Claims staff juggle shared inboxes and spreadsheets, and managers can't see how much money is tied up in open claims. This project is my attempt to fix that.
 
-## Start here
+- Claimants can report an incident, follow its progress, answer questions, and see the decision.
+- Claims staff get a proper queue: they can pick up claims, assess them, and take them through to payment or rejection.
+- Managers get a live view of workload and outstanding liability.
 
-If you're reviewing this, here's the order I'd suggest:
+Everyone uses the same Angular app, and it shows each person what's relevant to their role.
 
-1. **This README.** It covers what's built, what isn't, and how to run it.
-2. **[docs/architecture.md](docs/architecture.md).** This explains how the system is designed and why. Sections 1–3 cover the big decisions: how I framed the problem, why there are two services, and what goes over REST versus Kafka. If you're short on time, read those. The rest covers the claim lifecycle, how liability exposure is modelled, the data model, the API contract, a log of every decision (including the ones that changed during the build), and what I'd do next.
-3. **[docs/walkthrough.md](docs/walkthrough.md).** This is the demo script I'll follow, my answers to the questions I expect, and a map of where the important code lives.
-4. **[docs/ai-journal.md](docs/ai-journal.md).** This is the running log of how I worked with the AI: what I asked for, what I accepted, where I pushed back, and the mistakes I caught.
+Behind the app there are two Spring Boot services:
 
-The commit history is meant to be read too. Each commit is one step of the build, in the order I did it.
+- **claims-service** (port 8081) is where claims actually live. It runs the lifecycle, enforces who can do what, and announces every change as an event on Kafka.
+- **insights-service** (port 8082) listens to those events and works out the numbers managers and team leads need.
 
-## What's built
+---
 
-| Built | Not built (deliberately) |
-|---|---|
-| Claim lifecycle: submit, pick up or assign, request info, respond, reserve, approve (authority limit), reject, settle, withdraw | Document uploads |
-| Role-based visibility and actions, enforced server-side (`allowedActions`) | `PENDING_APPROVAL` referral to a manager |
-| Transactional outbox → Kafka → notifications, SSE live updates, insights projection | Real IdP (a dev login stands in) |
-| Workload, throughput and liability exposure by market × line × currency | Live FX rates (static table), caching |
-| Angular UI for claimant, handler and manager | Frontend unit tests |
-| Integration tests on real Postgres and Kafka (Testcontainers): 24 in claims-service, 5 in insights-service | |
+## Where to start reading
 
-## Prerequisites
-- Docker Desktop (running)
-- Node 20.19+ or 22.12+ for the frontend
-- JDK 17+, only needed to run the services or tests outside Docker
+If you're reviewing this, here's the order I'd suggest.
 
-## Run
+1. **This README.** It covers what I built, what I left out, and how to run it.
+2. **[docs/architecture.md](docs/architecture.md).** This is how I designed it and why. If you're short on time, sections 1 to 3 cover the big decisions: how I framed the problem, why I ended up with two services, and what goes over REST versus Kafka. The rest covers the claim lifecycle, how I model liability, the data model, the API contract, and a log of every decision, including the ones I changed my mind on.
+3. **[docs/walkthrough.md](docs/walkthrough.md).** This is the demo I'll run, the answers I'd give to the questions I expect, and a quick map of where the important code lives.
+4. **[docs/ai-journal.md](docs/ai-journal.md).** This is my running log of working with the AI: what I asked for, what I accepted, where I pushed back, and the mistakes I caught along the way.
 
-Backend and infrastructure in Docker. The first build downloads Maven dependencies, so allow a few minutes.
+The commit history is worth a look too. Each commit is one step, in the order I built things.
+
+---
+
+## What I built, and what I didn't
+
+**What works:**
+
+- **The full claim lifecycle.** Report, pick up or assign, ask the claimant for information, revise the reserve, approve, reject, record payment, or withdraw. Handlers have an approval limit, and anything above it needs the manager.
+- **Permissions enforced on the server.** Claimants only ever see their own claims, and handlers see their own team's. Every claim response tells the frontend exactly which actions the current user may take.
+- **Reliable events.** Every change is saved together with its event (the outbox pattern), then published to Kafka. From there, the events drive notifications, live updates in the browser, and the insights figures.
+- **Workload and liability views.** These show who's working on what, what's overdue, how fast decisions are being made, and how much is outstanding, broken down by market, product line and currency.
+- **An Angular UI for all three roles.** It updates live when someone else changes a claim.
+- **Tests against real infrastructure.** 24 tests in claims-service and 5 in insights-service run against real Postgres and Kafka (via Testcontainers), not mocks.
+
+**What I deliberately left out**, with more detail in section 12 of the architecture doc:
+
+- document uploads
+- automatic routing of over-limit approvals to the manager
+- a real login provider (a dev-only login stands in)
+- live exchange rates (the USD totals use a fixed table)
+- caching
+- frontend tests
+
+---
+
+## Running it
+
+You'll need:
+
+- **Docker Desktop**, running.
+- **Node 20.19+ or 22.12+**, for the frontend.
+- **Java 17+**, only if you want to run the services or tests outside Docker.
+
+### 1. Start the backend
+
+This one command starts Postgres, Kafka, a Kafka UI and both services:
 
 ```bash
 docker compose --profile app up --build
 ```
 
-Then start the frontend (see [Frontend](#frontend)).
+The first build downloads all the Java dependencies, so give it a few minutes. After that it's quick.
 
-Infrastructure only, then run the services locally:
+### 2. Start the frontend
+
+In another terminal:
+
+```bash
+cd frontend && npm install && npm start
+```
+
+Then open http://localhost:4200 and pick one of the demo users.
+
+Each browser tab keeps its own login. My favourite way to try it is to open two tabs: be the claimant (Mei Tan) in one and the handler (Priya Nair) in the other. When Priya asks Mei a question, Mei's screen updates on its own.
+
+### Other things you can open
+
+| What | Where |
+|---|---|
+| claims-service API docs (Swagger) | http://localhost:8081/swagger-ui.html |
+| insights-service API docs | http://localhost:8082/swagger-ui.html |
+| Kafka UI, to watch events arrive | http://localhost:8090 |
+| Postgres | `localhost:5432/claims_platform` (`admin` / `admin` to look around) |
+
+### Running the services outside Docker
+
+If you'd rather run the services from your IDE or terminal, start just the infrastructure:
 
 ```bash
 docker compose up -d
 ```
+
+Then run each service:
 
 ```bash
 (cd claims-service && ./mvnw spring-boot:run)
@@ -57,47 +109,29 @@ docker compose up -d
 (cd insights-service && ./mvnw spring-boot:run)
 ```
 
-| What | URL |
-|---|---|
-| claims-service API docs | http://localhost:8081/swagger-ui.html |
-| insights-service API docs | http://localhost:8082/swagger-ui.html |
-| Kafka UI | http://localhost:8090. Topics: `claims.events`, `claims.events.insights.DLT` |
-| Postgres | `localhost:5432/claims_platform`. Service roles are `claims_svc` and `insights_svc`; `admin`/`admin` is for inspection only. |
+---
 
-## Frontend
+## Trying the API directly
 
-Requires Node 20.19+ or 22.12+. Run both services first.
+There's no real login provider, so a dev-only endpoint lets you sign in as any of the seeded users:
 
-```bash
-cd frontend && npm install && npm start
-```
-
-Open http://localhost:4200 and pick a demo user. The session is per browser tab, so open a second tab to act as the handler while the first is the claimant, and watch changes arrive live.
-
-The dev proxy (`frontend/proxy.conf.json`) routes `/api/insights/**` to `:8082` and the rest of `/api/**` to `:8081`. To regenerate the typed API client after a backend change, with both services running:
-
-```bash
-cd frontend && npm run api:export && npm run api:generate
-```
-
-## Try it with curl
-
-Log in as a seeded user. Users are listed at `GET :8081/api/auth/demo-users`: claimant `mei.tan@example.com`, SG handlers `priya.nair@example.com` and `daniel.lim@example.com`, manager `grace.ong@example.com`.
+- Mei Tan, a claimant: `mei.tan@example.com`
+- Priya Nair and Daniel Lim, Singapore handlers: `priya.nair@example.com`, `daniel.lim@example.com`
+- Grace Ong, the manager: `grace.ong@example.com`
 
 ```bash
 curl -s -X POST localhost:8081/api/auth/dev-login -H 'Content-Type: application/json' -d '{"email":"mei.tan@example.com"}'
 ```
 
-Then call the APIs with `Authorization: Bearer <token>`, or use the Swagger UI's *Authorize* button.
+Copy the token from the response and send it as `Authorization: Bearer <token>`. Or paste it into the **Authorize** button in Swagger, which is the easiest way to explore.
 
-| Service | Main endpoints |
-|---|---|
-| claims-service | `/api/claims`, `/api/claims/{id}` with action sub-resources, `/api/notifications`, `/api/events/stream` (SSE) |
-| insights-service | `/api/insights/workload`, `/api/insights/throughput`, `/api/insights/exposure` (manager only) |
+The main places to look are `/api/claims` (with actions like `/api/claims/{id}/approve`), `/api/notifications` and, in insights, `/api/insights/workload` and `/api/insights/exposure`.
 
-## Test
+---
 
-Integration tests use Testcontainers, so Docker must be running.
+## Running the tests
+
+The integration tests start their own Postgres and Kafka in Docker, so Docker needs to be running.
 
 ```bash
 (cd claims-service && ./mvnw verify)
@@ -106,3 +140,15 @@ Integration tests use Testcontainers, so Docker must be running.
 ```bash
 (cd insights-service && ./mvnw verify)
 ```
+
+---
+
+## A note for anyone changing the API
+
+The frontend's API client is generated from the backends' OpenAPI specs, which are committed in `frontend/openapi/`. If you change a backend endpoint, start both services and regenerate the client:
+
+```bash
+cd frontend && npm run api:export && npm run api:generate
+```
+
+If the frontend no longer matches, it will fail to compile rather than break quietly at runtime.
