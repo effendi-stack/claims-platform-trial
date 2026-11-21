@@ -24,7 +24,6 @@ If you're reviewing this, here's the order I'd suggest.
 1. **This README.** It covers what I built, what I left out, and how to run it.
 2. **[docs/architecture.md](docs/architecture.md).** This is how I designed it and why. If you're short on time, sections 1 to 3 cover the big decisions: how I framed the problem, why I ended up with two services, and what goes over REST versus Kafka. The rest covers the claim lifecycle, how I model liability, the data model, the API contract, and a log of every decision, including the ones I changed my mind on.
 3. **[docs/walkthrough.md](docs/walkthrough.md).** This is the demo I'll run, the answers I'd give to the questions I expect, and a quick map of where the important code lives.
-4. **[docs/ai-journal.md](docs/ai-journal.md).** This is my running log of working with the AI: what I asked for, what I accepted, where I pushed back, and the mistakes I caught along the way.
 
 The commit history is worth a look too. Each commit is one step, in the order I built things.
 
